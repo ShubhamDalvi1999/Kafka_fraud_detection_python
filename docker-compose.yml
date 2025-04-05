@@ -1,0 +1,106 @@
+version: '3'
+
+services:
+  # Kafka service using Kraft mode (no Zookeeper)
+  kafka:
+    image: bitnami/kafka:latest
+    ports:
+      - "9094:9094"
+    environment:
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_CFG_NUM_PARTITIONS=10
+      - KAFKA_CFG_DEFAULT_REPLICATION_FACTOR=1
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    volumes:
+      - kafka_data:/bitnami/kafka
+    networks:
+      - fraud-detection-network
+
+  # Kafka UI for management
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - "8081:8080"
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
+    depends_on:
+      - kafka
+    networks:
+      - fraud-detection-network
+
+  # Redis for storing transaction data
+  redis:
+    image: redis/redis-stack:latest
+    ports:
+      - "6379:6379"
+      - "8001:8001"
+    environment:
+      - REDIS_ARGS=--requirepass scan_remember
+    volumes:
+      - redis_data:/data
+    networks:
+      - fraud-detection-network
+
+  # Transaction Service
+  transaction-service:
+    build:
+      context: ./transaction-service
+    ports:
+      - "3001:3000"
+    environment:
+      - KAFKA_HOST=kafka:9092
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=scan_remember
+    depends_on:
+      - kafka
+      - redis
+    networks:
+      - fraud-detection-network
+
+  # Fraud Detection Service
+  fraud-detection-service:
+    build:
+      context: ./fraud-detection-service
+    ports:
+      - "5001:5000"  # Expose health check endpoint
+    environment:
+      - KAFKA_HOST=kafka:9092
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=scan_remember
+    depends_on:
+      - kafka
+      - redis
+    networks:
+      - fraud-detection-network
+
+  # Alert Service
+  alert-service:
+    build:
+      context: ./alert-service
+    ports:
+      - "5002:5000"  # Expose health check endpoint
+    environment:
+      - KAFKA_HOST=kafka:9092
+    depends_on:
+      - kafka
+    networks:
+      - fraud-detection-network
+
+volumes:
+  kafka_data:
+  redis_data:
+
+networks:
+  fraud-detection-network:
+    driver: bridge 
