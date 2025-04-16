@@ -2,6 +2,65 @@
 
 A real-time fraud detection system built with Python, Kafka, and Redis. This system processes financial transactions, detects potential fraudulent activities, and generates alerts.
 
+# Simplified Fraud Detection System Architecture
+
+```mermaid
+graph LR
+    %% Styling
+    classDef client fill:white,stroke:black,color:black
+    classDef transaction fill:#d4f8d4,stroke:#7fbf7f,color:black
+    classDef kafka fill:#e6f3ff,stroke:#99ccff,color:black
+    classDef redis fill:#d9ecff,stroke:#66b3ff,color:black
+    classDef fraud fill:#ffd9d9,stroke:#ff9999,color:black
+    classDef alert fill:#ffe6e6,stroke:#ffb3b3,color:black
+    classDef kafkaTopics fill:#d9f2d9,stroke:#80cc80,color:black
+    classDef normal stroke-dasharray: 5 5
+
+    %% Nodes
+    client((client)):::client
+    transaction-service[transaction-<br>service]:::transaction
+    
+    subgraph Kafka [Kafka]
+        transactions[transactions]:::kafkaTopics
+        fraud-alerts[fraud-alerts]:::kafkaTopics
+    end
+    
+    Redis[Redis]:::redis
+    
+    fraud-detection-service[fraud-<br>detection-<br>service]:::fraud
+    alert-service[alert-service]:::alert
+    
+    %% Connections - regular transaction flow
+    client --> transaction-service
+    transaction-service --> Redis
+    transaction-service --> transactions
+    transactions --> fraud-detection-service
+    fraud-detection-service --> Redis
+    
+    %% Fraud path
+    fraud-detection-service -->|"IF FRAUD"| fraud-alerts
+    fraud-alerts --> alert-service
+    alert-service -->|"fraud alert"| client
+    
+    %% Non-fraud path (dashed line)
+    fraud-detection-service -->|"IF VALID"| Kafka_ack[("✓")]:::normal
+    
+    %% Styling
+    Kafka:::kafka
+```
+
+This simplified diagram shows:
+
+1. The client submits transactions to the transaction service
+2. The transaction service stores data in Redis and publishes to the Kafka transactions topic
+3. The fraud detection service consumes from the transactions topic, checks Redis for historical data
+4. **For fraudulent transactions:**
+   - The fraud detection service publishes to the fraud-alerts topic
+   - The alert service consumes from the fraud-alerts topic and sends alerts to the client
+5. **For valid (non-fraudulent) transactions:**
+   - The fraud detection service simply acknowledges the message to Kafka
+   - No alerts are generated (the transaction is considered legitimate) 
+
 ## System Architecture
 
 The system consists of three main services:
